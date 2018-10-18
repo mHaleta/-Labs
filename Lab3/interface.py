@@ -1,4 +1,7 @@
 import sys
+import numpy as np
+from scipy.integrate import odeint
+import matplotlib.pyplot as plt
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QLabel
 from PyQt5.QtWidgets import QApplication
@@ -13,8 +16,7 @@ from sympy.parsing.sympy_parser import (parse_expr, \
     convert_xor)
 from sympy.parsing.sympy_tokenize import TokenError
 from numpy import e, pi
-from middle_rectangles_method import middle_rectangles_method
-
+from runge_kutta_method import runge_kutta_3_order
 
 class MainWindow(QWidget):
 
@@ -23,57 +25,55 @@ class MainWindow(QWidget):
         self.initUI()
 
     def initUI(self):
-        reg_num = QtCore.QRegExp("[0-9]{1,6}")
-        validator_num = QtGui.QRegExpValidator(reg_num)
         reg = QtCore.QRegExp("^[-]?[0-9]{1,4}(\.[0-9]{1,5})?")
         validator = QtGui.QRegExpValidator(reg)
         
         self.lbl_function = QLabel(self)
         self.lbl_function.move(10, 12)
         self.lbl_function.setFont(QFont("Arial", 11))
-        self.lbl_function.setText("Введіть функцію:     y(x)   =")
+        self.lbl_function.setText("Введіть функцію:             f(x, u) =")
         
         self.func = QLineEdit(self)
-        self.func.move(210, 10)
+        self.func.move(240, 10)
         self.func.resize(150, 20)
         
-        self.lbl_breakdown = QLabel(self)
-        self.lbl_breakdown.move(10, 40)
-        self.lbl_breakdown.setFont(QFont("Arial", 11))
-        self.lbl_breakdown.setText("Введіть кількість розбиттів: ")
+        self.lbl_initial = QLabel(self)
+        self.lbl_initial.move(10, 40)
+        self.lbl_initial.setFont(QFont("Arial", 11))
+        self.lbl_initial.setText("Введіть початкову умову:   u_0 =")
         
-        self.num_breakdown = QLineEdit(self)
-        self.num_breakdown.move(210, 38)
-        self.num_breakdown.resize(80, 20)
-        self.num_breakdown.setValidator(validator_num)
+        self.num_initial = QLineEdit(self)
+        self.num_initial.move(240, 38)
+        self.num_initial.resize(80, 20)
+        self.num_initial.setValidator(validator)
         
         self.lbl_a = QLabel(self)
         self.lbl_a.move(10, 68)
         self.lbl_a.setFont(QFont("Arial", 11))
-        self.lbl_a.setText("Введіть нижню границю: ")
+        self.lbl_a.setText("Введіть нижню границю:        a =")
         
         self.a = QLineEdit(self)
-        self.a.move(210, 66)
+        self.a.move(240, 66)
         self.a.resize(80, 20)
         self.a.setValidator(validator)
         
         self.lbl_b = QLabel(self)
         self.lbl_b.move(10, 96)
         self.lbl_b.setFont(QFont("Arial", 11))
-        self.lbl_b.setText("Введіть верхню границю: ")
+        self.lbl_b.setText("Введіть верхню границю:       b =")
         
         self.b = QLineEdit(self)
-        self.b.move(210, 94)
+        self.b.move(240, 94)
         self.b.resize(80, 20)
         self.b.setValidator(validator)
 
-        but = QPushButton("Інтегрувати", self)
-        but.resize(100, 30)
-        but.move(250, 140)
+        but = QPushButton("Розв\'язати рівняння", self)
+        but.resize(150, 30)
+        but.move(230, 130)
         but.clicked.connect(self.solve)
 
         self.setGeometry(150, 150, 570, 200)
-        self.setWindowTitle('Метод середніх прямокутників')
+        self.setWindowTitle('Метод Рунге-Кутти для диференціального рівняння')
         self.setWindowIcon(QIcon('icon.jpg'))
         self.show()
     
@@ -84,17 +84,14 @@ class MainWindow(QWidget):
                                 'Всі поля мають бути заповнені')
         else:
             try:
-                num_breakdown = int(self.num_breakdown.text())
+                initial_point = float(self.num_initial.text())
                 a = float(self.a.text())
                 b = float(self.b.text())
             except ValueError:
                 QMessageBox.warning(self, 'Message',
                                 'Всі поля мають бути заповнені')
             else:
-                if self.num_low():
-                    QMessageBox.warning(self, "Message", 
-                                "Занадто мало проміжків розбиття")
-                elif self.b_less_a():
+                if self.b_less_a():
                     QMessageBox.warning(self, "Message", 
                                 "Нижня границя не може бути більше верхньої")
                 else:
@@ -104,14 +101,18 @@ class MainWindow(QWidget):
                     try:
                         func = parse_expr(self.func.text(),
                                    transformations = transformations)
-                        f = lambda x: eval(str(func))
-                        res = middle_rectangles_method(f, a, b, num_breakdown)
-                        if res is None:
+                        f = lambda u, x: eval(str(func))
+                        x_var, h = np.linspace(a, b, (b-a)*1000+1, retstep=True)
+                        u_var = runge_kutta_3_order(f, initial_point, x_var, h)
+                        if u_var is None:
                             QMessageBox.warning(self, 'Message',
-                                'Неможливо проінтегрувати на заданому відрізку')
-                        else:
-                            QMessageBox.information(self, "Message",
-                                                "Integral = "+str(res))
+                                'Неможливо розв\'язати рівняння')
+                        else:                        
+                            plt.figure(figsize=(15,8))
+                            plt.plot(x_var, u_var, label='u(x)')
+                            plt.grid(True)
+                            plt.legend()
+                            plt.show()
                     except NameError:
                         QMessageBox.warning(self, 'Message',
                                         'Неправильно введена функція')
@@ -124,9 +125,6 @@ class MainWindow(QWidget):
                     except TokenError:
                         QMessageBox.warning(self, 'Message',
                                         'Неправильно введена функція')
-            
-    def num_low(self):
-        return int(self.num_breakdown.text()) < 3
     
     def b_less_a(self):
         return float(self.a.text()) > float(self.b.text())
